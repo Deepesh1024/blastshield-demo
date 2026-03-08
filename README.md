@@ -4,7 +4,7 @@ A lightweight, containerized backend to run Visual Studio Code inside the browse
 
 ![Docker](public/logo-docker.svg) ![Node.js](https://img.shields.io/badge/Node.js-339933?style=for-the-badge&logo=nodedotjs&logoColor=white) 
 
-🔗 **BlastShield Extension**: [GitHub](https://github.com/Deepesh1024/blastshield-extension)
+🔗 **BlastShield Extension**: [GitHub](https://github.com/Deepesh1024/blastshield-submission)
 
 🎥 **Demo Video**: [Watch on YouTube](https://youtu.be/8dSYFwjkyaE)
 
