@@ -133,6 +133,10 @@ app.post('/api/sandbox', async (req, res) => {
       Image: IMAGE_NAME,
       name: `${CONTAINER_PREFIX}${sandboxId}`,
       ExposedPorts: { '8080/tcp': {} },
+      Env: [
+        // This is critical for WebViews (extensions) to load on non-HTTPS public IPs
+        'CS_DISABLE_WEBVIEW_ORIGIN=true'
+      ],
       HostConfig: {
         PortBindings: {
           '8080/tcp': [{ HostPort: String(hostPort) }],
