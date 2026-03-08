@@ -58,6 +58,13 @@ async function waitForReady(port, maxWaitMs = 3000) {
 // ── Express app ─────────────────────────────────────────────────────
 const app = express();
 app.use(express.json());
+
+// Inject bypass header for ngrok free tier warning
+app.use((req, res, next) => {
+  res.setHeader('ngrok-skip-browser-warning', 'true');
+  next();
+});
+
 app.use(express.static(path.join(__dirname, 'public')));
 
 const upload = multer({ dest: path.join(__dirname, 'tmp_uploads/') });
