@@ -114,7 +114,7 @@ app.post('/api/sandbox', async (req, res) => {
           sandboxId: id,
           projectId: meta.projectId,
           port: meta.port,
-          url: `http://${HOST}:${meta.port}/?folder=/home/coder/project`,
+          url: `http://${req.hostname}:${meta.port}/?folder=/home/coder/project`,
           existing: true,
         });
       }
@@ -164,7 +164,7 @@ app.post('/api/sandbox', async (req, res) => {
       sandboxId,
       projectId,
       port: hostPort,
-      url: `http://${HOST}:${hostPort}/?folder=/home/coder/project`,
+      url: `http://${req.hostname}:${hostPort}/?folder=/home/coder/project`,
     });
   } catch (err) {
     console.error('[sandbox] Create failed:', err.message);
@@ -175,13 +175,13 @@ app.post('/api/sandbox', async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────
 // API:  GET /api/sandbox   — list active sandboxes
 // ─────────────────────────────────────────────────────────────────────
-app.get('/api/sandbox', (_req, res) => {
+app.get('/api/sandbox', (req, res) => {
   const list = [];
   for (const [id, meta] of sandboxes) {
     list.push({
       sandboxId: id,
       ...meta,
-      url: `http://${HOST}:${meta.port}/?folder=/home/coder/project`,
+      url: `http://${req.hostname}:${meta.port}/?folder=/home/coder/project`,
     });
   }
   res.json(list);
@@ -229,7 +229,7 @@ app.get('/sandbox/:id', (req, res) => {
     return res.status(404).send('Sandbox not found');
   }
 
-  const codeServerUrl = `http://${HOST}:${meta.port}/?folder=/home/coder/project`;
+  const codeServerUrl = `http://${req.hostname}:${meta.port}/?folder=/home/coder/project`;
 
   res.send(`<!DOCTYPE html>
 <html lang="en">
