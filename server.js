@@ -37,7 +37,10 @@ function projectDirExists(projectId) {
 }
 
 // Wait for code-server to be ready inside the container
-async function waitForReady(port, maxWaitMs = 15000) {
+// We do a very fast ping just to ensure the container networking is up, 
+// rather than blocking for a long time. The user's browser will naturally 
+// wait a second or two for the iframe to load.
+async function waitForReady(port, maxWaitMs = 3000) {
   const start = Date.now();
   while (Date.now() - start < maxWaitMs) {
     try {
@@ -46,7 +49,7 @@ async function waitForReady(port, maxWaitMs = 15000) {
     } catch {
       // not ready yet
     }
-    await new Promise(r => setTimeout(r, 500));
+    await new Promise(r => setTimeout(r, 200)); // check much faster
   }
   return false;
 }
