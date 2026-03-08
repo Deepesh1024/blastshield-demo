@@ -59,9 +59,11 @@ async function waitForReady(port, maxWaitMs = 3000) {
 const app = express();
 app.use(express.json());
 
-// Inject bypass header for ngrok free tier warning
+// Inject bypass header for ngrok free tier warning AND disable iframe protection
 app.use((req, res, next) => {
   res.setHeader('ngrok-skip-browser-warning', 'true');
+  res.removeHeader('X-Frame-Options');
+  res.setHeader('Content-Security-Policy', "frame-ancestors *");
   next();
 });
 
@@ -168,8 +170,16 @@ app.post('/api/sandbox', async (req, res) => {
         // This is critical for WebViews (extensions) to load on non-HTTPS public IPs
         'CS_DISABLE_WEBVIEW_ORIGIN=true'
       ],
-      // We pass the base-path to code-server so it knows it is running behind a proxy path
-      Cmd: ['--bind-addr', '0.0.0.0:8080', '--auth', 'none', '--disable-telemetry', '/home/coder/project'],
+      // We disable service workers/trust to prevent websocket dropouts in public IP iframe environments
+      Cmd: [
+        '--bind-addr', '0.0.0.0:8080',
+        '--auth', 'none',
+        '--disable-telemetry',
+        '--disable-update-check',
+        '--disable-workspace-trust',
+        '--disable-service-worker',
+        '/home/coder/project'
+      ],
       HostConfig: {
         PortBindings: {
           '8080/tcp': [{ HostPort: String(hostPort) }],
@@ -308,7 +318,11 @@ app.get('/sandbox/:id', (req, res) => {
     <span class="info">📦 ${meta.projectId} — sandbox ${req.params.id}</span>
     <a href="/">← Back to projects</a>
   </div>
-  <iframe src="${codeServerUrl}" allow="clipboard-read; clipboard-write"></iframe>
+  <iframe 
+    src="${codeServerUrl}" 
+    allow="clipboard-read; clipboard-write"
+    sandbox="allow-same-origin allow-scripts allow-forms allow-downloads allow-modals"
+  ></iframe>
 </body>
 </html>`);
 });
