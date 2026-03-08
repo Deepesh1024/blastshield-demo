@@ -145,20 +145,7 @@ app.post('/api/sandbox', async (req, res) => {
       Image: IMAGE_NAME,
       name: `${CONTAINER_PREFIX}${sandboxId}`,
       ExposedPorts: { '8080/tcp': {} },
-      Env: [
-        // This is critical for WebViews (extensions) to load on non-HTTPS public IPs
-        'CS_DISABLE_WEBVIEW_ORIGIN=true'
-      ],
-      // We disable service workers/trust to prevent websocket dropouts in public IP iframe environments
-      Cmd: [
-        '--bind-addr', '0.0.0.0:8080',
-        '--auth', 'none',
-        '--disable-telemetry',
-        '--disable-update-check',
-        '--disable-workspace-trust',
-        '--disable-service-worker',
-        '/home/coder/project'
-      ],
+      // Let the Dockerfile ENTRYPOINT handle all code-server args
       HostConfig: {
         PortBindings: {
           '8080/tcp': [{ HostPort: String(hostPort) }],
