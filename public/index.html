@@ -1,0 +1,693 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BlastShield — Interactive Demo Sandbox</title>
+  <meta name="description"
+    content="BlastShield — AI-powered production failure simulator. Launch interactive VS Code sandboxes to explore demo projects." />
+  <link rel="icon" type="image/png" href="/blastshield-logo.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap"
+    rel="stylesheet" />
+  <style>
+    /* ── Reset & Base ─────────────────────────────── */
+    *,
+    *::before,
+    *::after {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    :root {
+      --bg: #0a0a0a;
+      --surface: #1a1a1a;
+      --surface-hover: #222222;
+      --border: #2a2a2a;
+      --border-hover: #e65100;
+      --accent: #e65100;
+      --accent-glow: rgba(230, 81, 0, 0.35);
+      --text: #e0e0e0;
+      --text-muted: #707070;
+      --text-dim: #505050;
+    }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow-x: hidden;
+    }
+
+    /* ── Header / Navbar ──────────────────────────── */
+    .navbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 18px 40px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(10, 10, 10, 0.85);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .navbar-brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      text-decoration: none;
+    }
+
+    .navbar-brand img {
+      width: 38px;
+      height: 38px;
+      object-fit: contain;
+    }
+
+    .navbar-brand .wordmark {
+      font-size: 1.35rem;
+      font-weight: 800;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+    }
+
+    .navbar-brand .wordmark .blast {
+      color: #ffffff;
+    }
+
+    .navbar-brand .wordmark .shield {
+      color: var(--accent);
+    }
+
+    .nav-links {
+      display: flex;
+      gap: 32px;
+      list-style: none;
+    }
+
+    .nav-links a {
+      color: var(--text-muted);
+      text-decoration: none;
+      font-size: 0.88rem;
+      font-weight: 500;
+      letter-spacing: 0.3px;
+      transition: all 0.2s;
+    }
+
+    .nav-links a:hover {
+      color: #ffffff;
+    }
+
+    .nav-links a.github-btn {
+      color: var(--accent);
+      border: 1px solid var(--accent);
+      padding: 6px 16px;
+      border-radius: 4px;
+    }
+
+    .nav-links a.github-btn:hover {
+      background: rgba(255, 122, 0, 0.1);
+      box-shadow: 0 0 10px rgba(255, 122, 0, 0.3);
+    }
+
+    /* ── Main Content ─────────────────────────────── */
+    .main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 60px 40px 40px;
+    }
+
+    /* ── Hero Text ────────────────────────────────── */
+    .hero-text {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      margin-bottom: 50px;
+      max-width: 800px;
+      width: 100%;
+      animation: fadeUp 0.8s ease-out forwards;
+    }
+
+    @keyframes fadeUp {
+      from {
+        opacity: 0;
+        transform: translateY(10px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .hero-text h1 {
+      font-size: 3.2rem;
+      font-weight: 900;
+      line-height: 1.15;
+      letter-spacing: -1px;
+      margin-bottom: 16px;
+    }
+
+    .hero-text .highlight {
+      color: var(--accent);
+    }
+
+    /* ── Project Grid ─────────────────────────────── */
+    .grid-wrapper {
+      position: relative;
+      width: 100%;
+      max-width: 880px;
+    }
+
+    .grid-title {
+      text-align: center;
+      color: #e0e0e0;
+      font-size: 1.15rem;
+      font-weight: 600;
+      margin-bottom: 24px;
+      letter-spacing: 0.5px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 48px 36px;
+      cursor: pointer;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 160px;
+      text-align: center;
+    }
+
+    .card::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      border-radius: 14px;
+      opacity: 0;
+      background: radial-gradient(ellipse at center, var(--accent-glow) 0%, transparent 70%);
+      transition: opacity 0.3s;
+    }
+
+    .card:hover {
+      border-color: var(--border-hover);
+      background: var(--surface-hover);
+      transform: translateY(-2px);
+      box-shadow: 0 8px 40px rgba(230, 81, 0, 0.12);
+    }
+
+    .card:hover::before {
+      opacity: 1;
+    }
+
+    .card h2 {
+      font-size: 1.25rem;
+      font-weight: 700;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      color: var(--text);
+      position: relative;
+      z-index: 1;
+      margin-bottom: 8px;
+    }
+
+    .card p {
+      font-size: 0.9rem;
+      color: var(--text-muted);
+      font-weight: 400;
+      position: relative;
+      z-index: 1;
+      line-height: 1.4;
+    }
+
+    .card.loading {
+      pointer-events: none;
+    }
+
+    .card.loading h2 {
+      opacity: 0.3;
+    }
+
+    .card.loading::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      z-index: 2;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(10, 10, 10, 0.7);
+      border-radius: 14px;
+    }
+
+    .card .spinner {
+      display: none;
+      position: absolute;
+      z-index: 3;
+      width: 32px;
+      height: 32px;
+      border: 3px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    .card.loading .spinner {
+      display: block;
+    }
+
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    /* ── Center Shield ────────────────────────────── */
+    .center-shield {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      z-index: 10;
+      width: 190px;
+      height: 190px;
+      perspective: 1000px;
+      pointer-events: none;
+      /* Let clicks pass through corners */
+    }
+
+    .shield-flip-inner {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+      transform-style: preserve-3d;
+      pointer-events: auto;
+      /* Catch hover/click on the circle */
+      border-radius: 50%;
+    }
+
+    .center-shield:hover .shield-flip-inner {
+      transform: rotateY(180deg);
+    }
+
+    .shield-front,
+    .shield-back {
+      position: absolute;
+      width: 100%;
+      height: 100%;
+      backface-visibility: hidden;
+      -webkit-backface-visibility: hidden;
+      border-radius: 50%;
+    }
+
+    .shield-back {
+      transform: rotateY(180deg);
+    }
+
+    .shield-ring {
+      width: 100%;
+      height: 100%;
+      border-radius: 50%;
+      background: var(--bg);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }
+
+    .back-ring {
+      background: var(--surface);
+      border: 1px solid var(--border-hover);
+      box-shadow: 0 0 30px var(--accent-glow);
+      flex-direction: column;
+      text-align: center;
+    }
+
+    .back-ring span {
+      color: var(--text);
+      font-weight: 700;
+      font-size: 1.1rem;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      line-height: 1.4;
+    }
+
+    .back-ring .accent-word {
+      color: var(--accent);
+    }
+
+    .shield-ring img {
+      width: 156px;
+      height: 156px;
+      object-fit: contain;
+      mix-blend-mode: screen;
+    }
+
+    /* ── Footer ───────────────────────────────────── */
+    .footer {
+      padding: 40px 40px 32px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 24px;
+    }
+
+    .footer-text {
+      color: var(--text-dim);
+      font-size: 0.82rem;
+      font-weight: 500;
+      letter-spacing: 0.5px;
+    }
+
+    .tech-logos {
+      display: flex;
+      align-items: center;
+      gap: 48px;
+    }
+
+    .tech-logos img {
+      height: 32px;
+      width: auto;
+      opacity: 0.6;
+      filter: invert(1) brightness(0.85);
+      transition: opacity 0.2s, filter 0.2s;
+    }
+
+    .tech-logos img.color-logo {
+      opacity: 0.9;
+      filter: none;
+    }
+
+    .tech-logos img:hover {
+      opacity: 1;
+      filter: invert(1) brightness(1);
+    }
+
+    .tech-logos img.color-logo:hover {
+      filter: brightness(1.1);
+    }
+
+    /* ── Error Toast ──────────────────────────────── */
+    #status {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #2d1010;
+      border: 1px solid #5c2020;
+      color: #f87171;
+      padding: 12px 24px;
+      border-radius: 10px;
+      font-size: 0.85rem;
+      z-index: 200;
+      display: none;
+    }
+
+    #status.visible {
+      display: block;
+      animation: fadeIn 0.3s ease;
+    }
+
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+        transform: translateX(-50%) translateY(8px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateX(-50%) translateY(0);
+      }
+    }
+
+    /* ── Responsive ───────────────────────────────── */
+    @media (max-width: 700px) {
+      .navbar {
+        padding: 14px 20px;
+      }
+
+      .nav-links {
+        gap: 18px;
+      }
+
+      .nav-links a {
+        font-size: 0.8rem;
+      }
+
+      .main {
+        padding: 40px 20px 20px;
+      }
+
+      .grid {
+        gap: 14px;
+      }
+
+      .card {
+        padding: 32px 20px;
+        min-height: 120px;
+      }
+
+      .card h2 {
+        font-size: 1rem;
+        letter-spacing: 2px;
+      }
+
+      .center-shield {
+        width: 100px;
+        height: 100px;
+      }
+
+      .back-ring span {
+        font-size: 0.65rem;
+      }
+
+      .shield-ring img {
+        width: 56px;
+        height: 56px;
+      }
+
+      .tech-logos {
+        gap: 20px;
+      }
+    }
+  </style>
+</head>
+
+<body>
+
+  <!-- ── Navbar ──────────────────────────────────── -->
+  <nav class="navbar">
+    <a href="/" class="navbar-brand">
+      <img src="/blastshield-logo.png" alt="BlastShield" />
+      <span class="wordmark"><span class="blast">BLAST</span><span class="shield">SHIELD</span></span>
+    </a>
+    <ul class="nav-links">
+      <li><a href="/">Home</a></li>
+      <li><a href="/about.html">About</a></li>
+      <li><a href="https://marketplace.visualstudio.com/items?itemName=blastshield.blastshield" target="_blank"
+          rel="noopener">Download</a></li>
+      <li><a href="/#demo">Demo Video</a></li>
+      <li><a href="https://github.com" target="_blank" rel="noopener" class="github-btn">Github</a></li>
+    </ul>
+  </nav>
+
+  <!-- ── Main Grid ───────────────────────────────── -->
+  <main class="main">
+    <div class="hero-text">
+      <h1 style="text-align: center; width: 100%;">Welcome to Blastshield<br>
+        <span class="highlight">the ai that evolved and pushed</span><br>
+        itself to production
+      </h1>
+    </div>
+
+    <div class="grid-wrapper">
+      <h3 class="grid-title">Pick a production failure scenario to simulate</h3>
+      <div class="grid">
+        <div class="card" id="card-1" onclick="launch('CartRush', this)">
+          <div class="spinner"></div>
+          <h2>CartRush</h2>
+          <p>Race condition checkout bug</p>
+        </div>
+        <div class="card" id="card-3" onclick="launch('QueryBurst', this)">
+          <div class="spinner"></div>
+          <h2>QueryBurst</h2>
+          <p>Database connection exhaustion</p>
+        </div>
+        <div class="card" id="card-2" onclick="launch('PayFlow', this)">
+          <div class="spinner"></div>
+          <h2>PayFlow</h2>
+          <p>Payment retry storm</p>
+        </div>
+        <div class="card" id="card-4" onclick="launch('CacheStorm', this)">
+          <div class="spinner"></div>
+          <h2>CacheStorm</h2>
+          <p>Cache stampede under load</p>
+        </div>
+      </div>
+
+      <!-- Upload your own project -->
+      <div style="text-align: center; margin-top: 50px; position: relative; z-index: 20;">
+        <a href="#" id="upload-btn"
+          style="color: var(--accent); text-decoration: underline; font-size: 0.95rem; font-weight: 500; transition: color 0.2s;">choose
+          your own project</a>
+        <input type="file" id="folder-input" webkitdirectory directory multiple style="display: none;" />
+      </div>
+
+      <!-- Center Shield -->
+      <div class="center-shield">
+        <div class="shield-flip-inner">
+          <div class="shield-front">
+            <div class="shield-ring">
+              <img src="/blastshield-logo.png" alt="BlastShield Shield" />
+            </div>
+          </div>
+          <div class="shield-back">
+            <div class="shield-ring back-ring">
+              <span>Choose a<br><span class="accent-word">Project</span></span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- ── Footer ──────────────────────────────────── -->
+  <footer class="footer">
+    <span class="footer-text">Built with technologies used in production</span>
+    <div class="tech-logos">
+      <img src="/logo-fastapi.svg" alt="FastAPI" title="FastAPI" />
+      <img src="/logo-docker.svg" alt="Docker" title="Docker" />
+      <img src="/logo-aws.svg" alt="AWS" title="AWS" class="color-logo" />
+      <img src="/logo-postgresql.svg" alt="PostgreSQL" title="PostgreSQL" />
+      <img src="/logo-redis.svg" alt="Redis" title="Redis" />
+    </div>
+  </footer>
+
+  <!-- ── Error Toast ─────────────────────────────── -->
+  <div id="status"></div>
+
+  <script>
+    async function launch(projectId, card) {
+      const status = document.getElementById('status');
+      status.className = '';
+      status.textContent = '';
+
+      card.classList.add('loading');
+
+      try {
+        const res = await fetch('/api/sandbox', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ projectId }),
+        });
+
+        const data = await res.json();
+
+        if (!res.ok) {
+          throw new Error(data.error || 'Failed to create sandbox');
+        }
+
+        // Redirect to the sandbox wrapper page
+        window.location.href = `/sandbox/${data.sandboxId}`;
+      } catch (err) {
+        status.textContent = `Error: ${err.message}`;
+        status.className = 'visible';
+        card.classList.remove('loading');
+
+        setTimeout(() => { status.className = ''; }, 5000);
+      }
+    }
+
+    // Custom Project Upload Logic
+    const uploadBtn = document.getElementById('upload-btn');
+    const folderInput = document.getElementById('folder-input');
+    const statusEl = document.getElementById('status');
+
+    uploadBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      folderInput.click();
+    });
+
+    folderInput.addEventListener('change', async (e) => {
+      const files = e.target.files;
+      if (!files.length) return;
+
+      uploadBtn.textContent = 'uploading and launching...';
+      uploadBtn.style.pointerEvents = 'none';
+
+      try {
+        const formData = new FormData();
+        Array.from(files).forEach(file => {
+          formData.append('files', file);
+          formData.append('paths', file.webkitRelativePath);
+        });
+
+        // 1. Upload folder
+        const uploadRes = await fetch('/api/upload-project', {
+          method: 'POST',
+          body: formData
+        });
+
+        const uploadData = await uploadRes.json();
+        if (!uploadRes.ok) throw new Error(uploadData.error || 'Upload failed');
+
+        // 2. Launch Sandbox using new projectId
+        const launchRes = await fetch('/api/sandbox', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ projectId: uploadData.projectId }),
+        });
+
+        const launchData = await launchRes.json();
+        if (!launchRes.ok) throw new Error(launchData.error || 'Failed to launch custom sandbox');
+
+        // 3. Redirect
+        window.location.href = `/sandbox/${launchData.sandboxId}`;
+      } catch (err) {
+        statusEl.textContent = `Upload Error: ${err.message}`;
+        statusEl.className = 'visible';
+        setTimeout(() => { statusEl.className = ''; }, 5000);
+      } finally {
+        uploadBtn.textContent = 'choose your own project';
+        uploadBtn.style.pointerEvents = 'auto';
+        folderInput.value = ''; // reset
+      }
+    });
+
+    // Clear loaders if navigating back via bfcache
+    window.addEventListener('pageshow', () => {
+      document.querySelectorAll('.card.loading').forEach(c => c.classList.remove('loading'));
+      uploadBtn.textContent = 'choose your own project';
+      uploadBtn.style.pointerEvents = 'auto';
+    });
+  </script>
+</body>
+
+</html>
