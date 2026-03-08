@@ -10,6 +10,7 @@
   "dependencies": {
     "dockerode": "^4.0.4",
     "express": "^4.21.2",
+    "http-proxy": "^1.18.1",
     "http-proxy-middleware": "^3.0.5",
     "multer": "^2.1.1",
     "uuid": "^11.1.0"
