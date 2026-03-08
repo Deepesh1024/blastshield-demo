@@ -4,6 +4,7 @@ const { v4: uuidv4 } = require('uuid');
 const path = require('path');
 const fs = require('fs');
 const multer = require('multer');
+const { createProxyMiddleware } = require('http-proxy-middleware');
 
 // ── Config ──────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 3000;
@@ -62,6 +63,29 @@ app.use(express.static(path.join(__dirname, 'public')));
 const upload = multer({ dest: path.join(__dirname, 'tmp_uploads/') });
 
 // ─────────────────────────────────────────────────────────────────────
+// PROXY: /sandbox/:port/*  — reverse proxy to the docker containers
+// ─────────────────────────────────────────────────────────────────────
+app.use(
+  '/sandbox-proxy/:port',
+  (req, res, next) => {
+    const port = req.params.port;
+    if (!port || isNaN(port)) return next();
+
+    const proxy = createProxyMiddleware({
+      target: `http://127.0.0.1:${port}`,
+      changeOrigin: true,
+      ws: true,
+      pathRewrite: {
+        [`^/sandbox-proxy/${port}`]: '', // remove the proxy prefix for the container
+      },
+      logLevel: 'error'
+    });
+
+    return proxy(req, res, next);
+  }
+);
+
+// ─────────────────────────────────────────────────────────────────────
 // API:  POST /api/upload-project   — upload a custom folder
 // ─────────────────────────────────────────────────────────────────────
 app.post('/api/upload-project', upload.array('files'), (req, res) => {
@@ -114,7 +138,7 @@ app.post('/api/sandbox', async (req, res) => {
           sandboxId: id,
           projectId: meta.projectId,
           port: meta.port,
-          url: `http://${req.hostname}:${meta.port}/?folder=/home/coder/project`,
+          url: `${req.protocol}://${req.get('host')}/sandbox-proxy/${meta.port}/?folder=/home/coder/project`,
           existing: true,
         });
       }
@@ -137,6 +161,8 @@ app.post('/api/sandbox', async (req, res) => {
         // This is critical for WebViews (extensions) to load on non-HTTPS public IPs
         'CS_DISABLE_WEBVIEW_ORIGIN=true'
       ],
+      // We pass the base-path to code-server so it knows it is running behind a proxy path
+      Cmd: ['--bind-addr', '0.0.0.0:8080', '--auth', 'none', '--disable-telemetry', '/home/coder/project'],
       HostConfig: {
         PortBindings: {
           '8080/tcp': [{ HostPort: String(hostPort) }],
@@ -168,7 +194,7 @@ app.post('/api/sandbox', async (req, res) => {
       sandboxId,
       projectId,
       port: hostPort,
-      url: `http://${req.hostname}:${hostPort}/?folder=/home/coder/project`,
+      url: `${req.protocol}://${req.get('host')}/sandbox-proxy/${hostPort}/?folder=/home/coder/project`,
     });
   } catch (err) {
     console.error('[sandbox] Create failed:', err.message);
@@ -185,7 +211,7 @@ app.get('/api/sandbox', (req, res) => {
     list.push({
       sandboxId: id,
       ...meta,
-      url: `http://${req.hostname}:${meta.port}/?folder=/home/coder/project`,
+      url: `${req.protocol}://${req.get('host')}/sandbox-proxy/${meta.port}/?folder=/home/coder/project`,
     });
   }
   res.json(list);
@@ -233,7 +259,7 @@ app.get('/sandbox/:id', (req, res) => {
     return res.status(404).send('Sandbox not found');
   }
 
-  const codeServerUrl = `http://${req.hostname}:${meta.port}/?folder=/home/coder/project`;
+  const codeServerUrl = `${req.protocol}://${req.get('host')}/sandbox-proxy/${meta.port}/?folder=/home/coder/project`;
 
   res.send(`<!DOCTYPE html>
 <html lang="en">
