@@ -126,7 +126,7 @@ app.post('/api/sandbox', async (req, res) => {
           sandboxId: id,
           projectId: meta.projectId,
           port: meta.port,
-          url: `http://${req.hostname}:${meta.port}/?folder=/home/coder/project`,
+          url: `https://${req.hostname}/sandbox-proxy/${meta.port}/?folder=/home/coder/project`,
           existing: true,
         });
       }
@@ -177,7 +177,7 @@ app.post('/api/sandbox', async (req, res) => {
       sandboxId,
       projectId,
       port: hostPort,
-      url: `http://${req.hostname}:${hostPort}/?folder=/home/coder/project`,
+      url: `https://${req.hostname}/sandbox-proxy/${hostPort}/?folder=/home/coder/project`,
     });
   } catch (err) {
     console.error('[sandbox] Create failed:', err.message);
@@ -194,7 +194,7 @@ app.get('/api/sandbox', (req, res) => {
     list.push({
       sandboxId: id,
       ...meta,
-      url: `http://${req.hostname}:${meta.port}/?folder=/home/coder/project`,
+      url: `https://${req.hostname}/sandbox-proxy/${meta.port}/?folder=/home/coder/project`,
     });
   }
   res.json(list);
@@ -242,7 +242,7 @@ app.get('/sandbox/:id', (req, res) => {
     return res.status(404).send('Sandbox not found');
   }
 
-  const codeServerUrl = `http://${req.hostname}:${meta.port}/?folder=/home/coder/project`;
+  const codeServerUrl = `https://${req.hostname}/sandbox-proxy/${meta.port}/?folder=/home/coder/project`;
 
   res.send(`<!DOCTYPE html>
 <html lang="en">
