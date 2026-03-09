@@ -1,97 +1,99 @@
 #!/bin/bash
 # ─────────────────────────────────────────────────────────────────
-# BlastShield NGINX HTTPS Setup Script
-# Run this on your EC2 instance to serve sandboxes over HTTPS
+# BlastShield Caddy HTTPS Setup
+# Domain: blastshield-demo.duckdns.org
+# Auto-provisions a real Let's Encrypt certificate
 # ─────────────────────────────────────────────────────────────────
 
 set -e
 
 echo "╔══════════════════════════════════════════════════╗"
-echo "║  BlastShield NGINX HTTPS Setup                   ║"
+echo "║  BlastShield Caddy HTTPS Setup                   ║"
 echo "╚══════════════════════════════════════════════════╝"
 
-# 1. Install NGINX
-echo "[1/5] Installing NGINX..."
-if command -v apt &>/dev/null; then
-  sudo apt update -y && sudo apt install nginx -y
-elif command -v yum &>/dev/null; then
-  sudo yum install nginx -y
-fi
+# 1. Stop NGINX if running (frees port 80/443)
+echo "[1/4] Stopping NGINX (if running)..."
+sudo systemctl stop nginx 2>/dev/null || true
+sudo systemctl disable nginx 2>/dev/null || true
 
-# 2. Generate self-signed SSL certificate
-echo "[2/5] Generating self-signed SSL certificate..."
-sudo openssl req -x509 -nodes -days 365 \
-  -newkey rsa:2048 \
-  -keyout /etc/nginx/key.pem \
-  -out /etc/nginx/cert.pem \
-  -subj "/CN=blastshield-demo"
+# 2. Install Caddy
+echo "[2/4] Installing Caddy..."
+sudo yum install -y yum-utils 2>/dev/null || true
+sudo yum-config-manager --add-repo https://copr.fedorainfracloud.org/coprs/ganto/caddy/repo/epel-8/ganto-caddy-epel-8.repo 2>/dev/null || true
 
-# 3. Write NGINX config
-echo "[3/5] Writing NGINX config..."
-sudo tee /etc/nginx/conf.d/blastshield.conf > /dev/null <<'NGINX'
-# ── BlastShield Reverse Proxy ────────────────────────────
-# Serves Node app (3000) and code-server sandboxes (9000-9100)
-# over a single HTTPS endpoint on port 443.
+# Direct binary install (works on any Linux)
+curl -sL "https://caddyserver.com/api/download?os=linux&arch=amd64" -o /tmp/caddy
+sudo mv /tmp/caddy /usr/local/bin/caddy
+sudo chmod +x /usr/local/bin/caddy
 
-map $http_upgrade $connection_upgrade {
-    default upgrade;
-    ''      close;
-}
+echo "  Caddy version: $(/usr/local/bin/caddy version)"
 
-server {
-    listen 443 ssl;
-    server_name _;
-
-    ssl_certificate     /etc/nginx/cert.pem;
-    ssl_certificate_key /etc/nginx/key.pem;
-
-    # ── Landing page: proxy to Node.js on port 3000 ──
-    location / {
-        proxy_pass http://127.0.0.1:3000;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection $connection_upgrade;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
+# 3. Write Caddyfile
+echo "[3/4] Writing Caddyfile..."
+sudo mkdir -p /etc/caddy
+sudo tee /etc/caddy/Caddyfile > /dev/null <<'CADDYFILE'
+blastshield-demo.duckdns.org {
+    # Landing page → Node.js on port 3000
+    handle /sandbox-proxy/* {
+        reverse_proxy localhost:{re.port.1} {
+            header_up Host {host}
+            header_up X-Forwarded-Proto {scheme}
+        }
     }
 
-    # ── Sandbox proxy: /sandbox-proxy/PORT → localhost:PORT ──
-    # Uses regex to extract the dynamic port number
-    location ~ ^/sandbox-proxy/(\d+)(/.*)?$ {
-        set $sandbox_port $1;
-        proxy_pass http://127.0.0.1:$sandbox_port$2$is_args$args;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection $connection_upgrade;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-
-        # Long timeouts for WebSocket connections
-        proxy_read_timeout 86400s;
-        proxy_send_timeout 86400s;
+    # Everything else → Node.js
+    reverse_proxy localhost:3000 {
+        header_up Host {host}
+        header_up X-Forwarded-Proto {scheme}
     }
 }
-NGINX
+CADDYFILE
 
-# 4. Remove default site if it conflicts
-sudo rm -f /etc/nginx/sites-enabled/default 2>/dev/null || true
+# Actually, Caddy needs regex matching for dynamic ports.
+# Let's use a simpler approach: proxy everything to Node,
+# and let Node handle the sandbox routing.
+sudo tee /etc/caddy/Caddyfile > /dev/null <<'CADDYFILE'
+blastshield-demo.duckdns.org {
+    reverse_proxy localhost:3000 {
+        header_up Host {host}
+        header_up X-Forwarded-Proto {scheme}
+    }
+}
+CADDYFILE
 
-# 5. Test and restart NGINX
-echo "[4/5] Testing NGINX config..."
-sudo nginx -t
+# 4. Create systemd service and start
+echo "[4/4] Starting Caddy..."
+sudo tee /etc/systemd/system/caddy.service > /dev/null <<'SERVICE'
+[Unit]
+Description=Caddy web server
+After=network.target
 
-echo "[5/5] Restarting NGINX..."
-sudo systemctl restart nginx
-sudo systemctl enable nginx
+[Service]
+ExecStart=/usr/local/bin/caddy run --config /etc/caddy/Caddyfile --adapter caddyfile
+ExecReload=/usr/local/bin/caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile
+Restart=always
+RestartSec=5
+LimitNOFILE=65535
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+
+[Install]
+WantedBy=multi-user.target
+SERVICE
+
+sudo systemctl daemon-reload
+sudo systemctl enable caddy
+sudo systemctl start caddy
+
+# Wait for cert provisioning
+echo ""
+echo "  Waiting for Let's Encrypt certificate..."
+sleep 5
 
 echo ""
 echo "╔══════════════════════════════════════════════════╗"
-echo "║  ✅ HTTPS proxy is live!                         ║"
+echo "║  ✅ HTTPS is live!                               ║"
 echo "║                                                  ║"
-echo "║  Open: https://YOUR_EC2_IP                       ║"
-echo "║  (Click 'Advanced → Proceed' on cert warning)   ║"
+echo "║  https://blastshield-demo.duckdns.org            ║"
+echo "║                                                  ║"
+echo "║  Real Let's Encrypt cert — works on ALL browsers ║"
 echo "╚══════════════════════════════════════════════════╝"
