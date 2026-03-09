@@ -1,13 +1,14 @@
 const express = require('express');
 const Docker = require('dockerode');
-const httpProxy = require('http-proxy');
 const { v4: uuidv4 } = require('uuid');
 const path = require('path');
 const fs = require('fs');
 const multer = require('multer');
 
+
 // ── Config ──────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 3000;
+const HOST = process.env.HOST || 'localhost';
 const IMAGE_NAME = 'code-sandbox';
 const CONTAINER_PREFIX = 'sandbox-';
 const PORT_RANGE_START = 9000;
@@ -21,16 +22,6 @@ const docker = new Docker(); // connects via /var/run/docker.sock
 // Map<sandboxId, { containerId, port, projectId, createdAt }>
 const sandboxes = new Map();
 const usedPorts = new Set();
-
-// ── Reverse proxy (single instance, shared for HTTP + WebSocket) ────
-const proxy = httpProxy.createProxyServer({});
-proxy.on('error', (err, req, res) => {
-  console.error('[proxy] Error:', err.message);
-  if (res && res.writeHead) {
-    res.writeHead(502);
-    res.end('Proxy error');
-  }
-});
 
 // ── Helpers ─────────────────────────────────────────────────────────
 
@@ -46,18 +37,11 @@ function projectDirExists(projectId) {
   return fs.existsSync(dir) ? dir : null;
 }
 
-// Extract port number from a /proxy/<port>/... URL
-function extractProxyPort(url) {
-  const match = url.match(/^\/proxy\/(\d+)/);
-  return match ? match[1] : null;
-}
-
-// Strip the /proxy/<port> prefix so code-server sees clean paths
-function stripProxyPrefix(url) {
-  return url.replace(/^\/proxy\/\d+/, '') || '/';
-}
-
-async function waitForReady(port, maxWaitMs = 5000) {
+// Wait for code-server to be ready inside the container
+// We do a very fast ping just to ensure the container networking is up, 
+// rather than blocking for a long time. The user's browser will naturally 
+// wait a second or two for the iframe to load.
+async function waitForReady(port, maxWaitMs = 3000) {
   const start = Date.now();
   while (Date.now() - start < maxWaitMs) {
     try {
@@ -66,7 +50,7 @@ async function waitForReady(port, maxWaitMs = 5000) {
     } catch {
       // not ready yet
     }
-    await new Promise(r => setTimeout(r, 300));
+    await new Promise(r => setTimeout(r, 200)); // check much faster
   }
   return false;
 }
@@ -75,7 +59,7 @@ async function waitForReady(port, maxWaitMs = 5000) {
 const app = express();
 app.use(express.json());
 
-// Bypass ngrok free tier warning + disable iframe restrictions
+// Inject bypass header for ngrok free tier warning AND disable iframe protection
 app.use((req, res, next) => {
   res.setHeader('ngrok-skip-browser-warning', 'true');
   res.removeHeader('X-Frame-Options');
@@ -87,21 +71,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 const upload = multer({ dest: path.join(__dirname, 'tmp_uploads/') });
 
-// ─────────────────────────────────────────────────────────────────────
-// PROXY:  /proxy/:port/*  — reverse proxy HTTP requests to containers
-// This MUST be before other routes so it catches all sub-paths
-// ─────────────────────────────────────────────────────────────────────
-app.all('/proxy/:port/*', (req, res) => {
-  const port = req.params.port;
-  req.url = stripProxyPrefix(req.originalUrl);
-  proxy.web(req, res, { target: `http://127.0.0.1:${port}`, changeOrigin: true });
-});
 
-app.all('/proxy/:port', (req, res) => {
-  const port = req.params.port;
-  req.url = '/';
-  proxy.web(req, res, { target: `http://127.0.0.1:${port}`, changeOrigin: true });
-});
 
 // ─────────────────────────────────────────────────────────────────────
 // API:  POST /api/upload-project   — upload a custom folder
@@ -152,12 +122,11 @@ app.post('/api/sandbox', async (req, res) => {
     // Check if a sandbox already exists for this project
     for (const [id, meta] of sandboxes) {
       if (meta.projectId === projectId) {
-        const baseUrl = `${req.protocol}://${req.get('host')}`;
         return res.status(200).json({
           sandboxId: id,
           projectId: meta.projectId,
           port: meta.port,
-          url: `${baseUrl}/proxy/${meta.port}/?folder=/home/coder/project`,
+          url: `http://${req.hostname}:${meta.port}/?folder=/home/coder/project`,
           existing: true,
         });
       }
@@ -172,11 +141,11 @@ app.post('/api/sandbox', async (req, res) => {
     usedPorts.add(hostPort);
 
     // Create and start the container
-    // Let the Dockerfile ENTRYPOINT handle all code-server args
     const container = await docker.createContainer({
       Image: IMAGE_NAME,
       name: `${CONTAINER_PREFIX}${sandboxId}`,
       ExposedPorts: { '8080/tcp': {} },
+      // Let the Dockerfile ENTRYPOINT handle all code-server args
       HostConfig: {
         PortBindings: {
           '8080/tcp': [{ HostPort: String(hostPort) }],
@@ -204,12 +173,11 @@ app.post('/api/sandbox', async (req, res) => {
       console.warn(`[sandbox] Warning: ${sandboxId} may not be fully ready`);
     }
 
-    const baseUrl = `${req.protocol}://${req.get('host')}`;
     res.status(201).json({
       sandboxId,
       projectId,
       port: hostPort,
-      url: `${baseUrl}/proxy/${hostPort}/?folder=/home/coder/project`,
+      url: `http://${req.hostname}:${hostPort}/?folder=/home/coder/project`,
     });
   } catch (err) {
     console.error('[sandbox] Create failed:', err.message);
@@ -221,13 +189,12 @@ app.post('/api/sandbox', async (req, res) => {
 // API:  GET /api/sandbox   — list active sandboxes
 // ─────────────────────────────────────────────────────────────────────
 app.get('/api/sandbox', (req, res) => {
-  const baseUrl = `${req.protocol}://${req.get('host')}`;
   const list = [];
   for (const [id, meta] of sandboxes) {
     list.push({
       sandboxId: id,
       ...meta,
-      url: `${baseUrl}/proxy/${meta.port}/?folder=/home/coder/project`,
+      url: `http://${req.hostname}:${meta.port}/?folder=/home/coder/project`,
     });
   }
   res.json(list);
@@ -275,8 +242,7 @@ app.get('/sandbox/:id', (req, res) => {
     return res.status(404).send('Sandbox not found');
   }
 
-  // iframe points to /proxy/PORT on the SAME origin — no cross-port issues
-  const codeServerUrl = `${req.protocol}://${req.get('host')}/proxy/${meta.port}/?folder=/home/coder/project`;
+  const codeServerUrl = `http://${req.hostname}:${meta.port}/?folder=/home/coder/project`;
 
   res.send(`<!DOCTYPE html>
 <html lang="en">
@@ -318,7 +284,11 @@ app.get('/sandbox/:id', (req, res) => {
     <span class="info">📦 ${meta.projectId} — sandbox ${req.params.id}</span>
     <a href="/">← Back to projects</a>
   </div>
-  <iframe src="${codeServerUrl}" allow="clipboard-read; clipboard-write"></iframe>
+  <iframe 
+    src="${codeServerUrl}" 
+    allow="clipboard-read; clipboard-write"
+    sandbox="allow-same-origin allow-scripts allow-forms allow-downloads allow-modals"
+  ></iframe>
 </body>
 </html>`);
 });
@@ -343,8 +313,7 @@ process.on('SIGINT', cleanup);
 process.on('SIGTERM', cleanup);
 
 // ── Start ─────────────────────────────────────────────────────────
-// CRITICAL: Capture the server instance so we can bind WebSocket upgrades
-const server = app.listen(PORT, () => {
+app.listen(PORT, () => {
   console.log(`
 ╔════════════════════════════════════════════════╗
 ║   VS Code Sandbox Server                       ║
@@ -355,14 +324,4 @@ const server = app.listen(PORT, () => {
 ║   Port range   : ${PORT_RANGE_START}–${PORT_RANGE_END}                       ║
 ╚════════════════════════════════════════════════╝
   `);
-});
-
-// CRITICAL: Forward WebSocket upgrade requests to the proxy
-// Without this, VS Code kills the connection immediately
-server.on('upgrade', (req, socket, head) => {
-  const port = extractProxyPort(req.url);
-  if (port) {
-    req.url = stripProxyPrefix(req.url);
-    proxy.ws(req, socket, head, { target: `http://127.0.0.1:${port}`, changeOrigin: true });
-  }
 });
